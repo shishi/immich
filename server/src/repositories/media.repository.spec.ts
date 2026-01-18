@@ -694,7 +694,7 @@ describe(MediaRepository.name, () => {
       expect(loggerMock.error).toHaveBeenCalledWith('Failed to decode image from Buffer input');
     });
 
-    it('should rethrow the original error after logging', async () => {
+    it('should append file path to error message when decoding string path fails', async () => {
       const testPath = '/path/to/invalid/image.jpg';
       let caughtError: Error | undefined;
 
@@ -708,7 +708,25 @@ describe(MediaRepository.name, () => {
       }
 
       expect(caughtError).toBeDefined();
+      expect(caughtError?.message).toContain(testPath);
       expect(loggerMock.error).toHaveBeenCalledWith(`Failed to decode image from file: ${testPath}`);
+    });
+
+    it('should not modify error message when decoding Buffer fails', async () => {
+      const testBuffer = Buffer.from('invalid image data');
+      let caughtError: Error | undefined;
+
+      try {
+        await sut.decodeImage(testBuffer, {
+          colorspace: Colorspace.Srgb,
+          processInvalidImages: false,
+        });
+      } catch (error) {
+        caughtError = error as Error;
+      }
+
+      expect(caughtError).toBeDefined();
+      expect(caughtError?.message).not.toContain('Buffer');
     });
   });
 });

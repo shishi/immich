@@ -147,6 +147,9 @@ export class MediaRepository {
     } catch (error) {
       if (typeof input === 'string') {
         this.logger.error(`Failed to decode image from file: ${input}`);
+        if (error instanceof Error) {
+          error.message = `${error.message}: ${input}`;
+        }
       } else {
         this.logger.error('Failed to decode image from Buffer input');
       }
