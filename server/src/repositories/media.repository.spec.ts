@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { AssetFace } from 'src/database';
 import { AssetEditAction, MirrorAxis } from 'src/dtos/editing.dto';
 import { AssetOcrResponseDto } from 'src/dtos/ocr.dto';
-import { SourceType } from 'src/enum';
+import { Colorspace, SourceType } from 'src/enum';
 import { LoggingRepository } from 'src/repositories/logging.repository';
 import { BoundingBox } from 'src/repositories/machine-learning.repository';
 import { MediaRepository } from 'src/repositories/media.repository';
@@ -673,7 +673,7 @@ describe(MediaRepository.name, () => {
 
       await expect(
         sut.decodeImage(testPath, {
-          colorspace: 'srgb' as any,
+          colorspace: Colorspace.Srgb,
           processInvalidImages: false,
         }),
       ).rejects.toThrow();
@@ -686,7 +686,7 @@ describe(MediaRepository.name, () => {
 
       await expect(
         sut.decodeImage(testBuffer, {
-          colorspace: 'srgb' as any,
+          colorspace: Colorspace.Srgb,
           processInvalidImages: false,
         }),
       ).rejects.toThrow();
@@ -700,7 +700,7 @@ describe(MediaRepository.name, () => {
 
       try {
         await sut.decodeImage(testPath, {
-          colorspace: 'srgb' as any,
+          colorspace: Colorspace.Srgb,
           processInvalidImages: false,
         });
       } catch (error) {
