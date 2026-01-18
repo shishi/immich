@@ -63,10 +63,12 @@ const buildTestQuadImage = async () => {
 
 describe(MediaRepository.name, () => {
   let sut: MediaRepository;
+  let loggerMock: any;
 
   beforeEach(() => {
     // eslint-disable-next-line no-sparse-arrays
-    sut = new MediaRepository(automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false }));
+    loggerMock = automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false });
+    sut = new MediaRepository(loggerMock);
   });
 
   describe('applyEdits (single actions)', () => {
@@ -662,6 +664,51 @@ describe(MediaRepository.name, () => {
         expect(result.visible).toEqual([ocrInsideCrop]);
         expect(result.hidden).toEqual([ocrOutsideCrop]);
       });
+    });
+  });
+
+  describe('decodeImage', () => {
+    it('should log error with file path when decoding string path fails', async () => {
+      const testPath = '/path/to/invalid/image.jpg';
+
+      await expect(
+        sut.decodeImage(testPath, {
+          colorspace: 'srgb' as any,
+          processInvalidImages: false,
+        }),
+      ).rejects.toThrow();
+
+      expect(loggerMock.error).toHaveBeenCalledWith(`Failed to decode image from file: ${testPath}`);
+    });
+
+    it('should log error without file path when decoding Buffer fails', async () => {
+      const testBuffer = Buffer.from('invalid image data');
+
+      await expect(
+        sut.decodeImage(testBuffer, {
+          colorspace: 'srgb' as any,
+          processInvalidImages: false,
+        }),
+      ).rejects.toThrow();
+
+      expect(loggerMock.error).toHaveBeenCalledWith('Failed to decode image from Buffer input');
+    });
+
+    it('should rethrow the original error after logging', async () => {
+      const testPath = '/path/to/invalid/image.jpg';
+      let caughtError: Error | undefined;
+
+      try {
+        await sut.decodeImage(testPath, {
+          colorspace: 'srgb' as any,
+          processInvalidImages: false,
+        });
+      } catch (error) {
+        caughtError = error as Error;
+      }
+
+      expect(caughtError).toBeDefined();
+      expect(loggerMock.error).toHaveBeenCalledWith(`Failed to decode image from file: ${testPath}`);
     });
   });
 });
