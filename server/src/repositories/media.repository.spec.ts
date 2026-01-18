@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import { AssetFace } from 'src/database';
 import { AssetEditAction, MirrorAxis } from 'src/dtos/editing.dto';
 import { AssetOcrResponseDto } from 'src/dtos/ocr.dto';
-import { SourceType } from 'src/enum';
+import { Colorspace, SourceType } from 'src/enum';
 import { LoggingRepository } from 'src/repositories/logging.repository';
 import { BoundingBox } from 'src/repositories/machine-learning.repository';
 import { MediaRepository } from 'src/repositories/media.repository';
@@ -63,10 +63,12 @@ const buildTestQuadImage = async () => {
 
 describe(MediaRepository.name, () => {
   let sut: MediaRepository;
+  let loggerMock: any;
 
   beforeEach(() => {
     // eslint-disable-next-line no-sparse-arrays
-    sut = new MediaRepository(automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false }));
+    loggerMock = automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false });
+    sut = new MediaRepository(loggerMock);
   });
 
   describe('applyEdits (single actions)', () => {
@@ -662,6 +664,69 @@ describe(MediaRepository.name, () => {
         expect(result.visible).toEqual([ocrInsideCrop]);
         expect(result.hidden).toEqual([ocrOutsideCrop]);
       });
+    });
+  });
+
+  describe('decodeImage', () => {
+    it('should log error with file path when decoding string path fails', async () => {
+      const testPath = '/path/to/invalid/image.jpg';
+
+      await expect(
+        sut.decodeImage(testPath, {
+          colorspace: Colorspace.Srgb,
+          processInvalidImages: false,
+        }),
+      ).rejects.toThrow();
+
+      expect(loggerMock.error).toHaveBeenCalledWith(`Failed to decode image from file: ${testPath}`);
+    });
+
+    it('should log error without file path when decoding Buffer fails', async () => {
+      const testBuffer = Buffer.from('invalid image data');
+
+      await expect(
+        sut.decodeImage(testBuffer, {
+          colorspace: Colorspace.Srgb,
+          processInvalidImages: false,
+        }),
+      ).rejects.toThrow();
+
+      expect(loggerMock.error).toHaveBeenCalledWith('Failed to decode image from Buffer input');
+    });
+
+    it('should append file path to error message when decoding string path fails', async () => {
+      const testPath = '/path/to/invalid/image.jpg';
+      let caughtError: Error | undefined;
+
+      try {
+        await sut.decodeImage(testPath, {
+          colorspace: Colorspace.Srgb,
+          processInvalidImages: false,
+        });
+      } catch (error) {
+        caughtError = error as Error;
+      }
+
+      expect(caughtError).toBeDefined();
+      expect(caughtError?.message).toContain(testPath);
+      expect(loggerMock.error).toHaveBeenCalledWith(`Failed to decode image from file: ${testPath}`);
+    });
+
+    it('should not modify error message when decoding Buffer fails', async () => {
+      const testBuffer = Buffer.from('invalid image data');
+      let caughtError: Error | undefined;
+
+      try {
+        await sut.decodeImage(testBuffer, {
+          colorspace: Colorspace.Srgb,
+          processInvalidImages: false,
+        });
+      } catch (error) {
+        caughtError = error as Error;
+      }
+
+      expect(caughtError).toBeDefined();
+      expect(caughtError?.message).not.toContain('Buffer');
     });
   });
 });
