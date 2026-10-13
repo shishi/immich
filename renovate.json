@@ -3,6 +3,7 @@
   "lockFileMaintenance": {
     "automerge": true,
     "automergeType": "pr",
+    "minimumReleaseAge": "0 days",
     "platformAutomerge": false
   },
   "extends": ["local>immich-app/.github:renovate-config"],
