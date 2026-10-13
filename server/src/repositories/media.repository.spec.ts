@@ -2,12 +2,12 @@ import sharp from 'sharp';
 import { AssetFace } from 'src/database';
 import { AssetEditAction, MirrorAxis } from 'src/dtos/editing.dto';
 import { AssetOcrResponseDto } from 'src/dtos/ocr.dto';
-import { SourceType } from 'src/enum';
+import { Colorspace, SourceType } from 'src/enum';
 import { LoggingRepository } from 'src/repositories/logging.repository';
 import { BoundingBox } from 'src/repositories/machine-learning.repository';
 import { MediaRepository } from 'src/repositories/media.repository';
 import { checkFaceVisibility, checkOcrVisibility } from 'src/utils/editor';
-import { automock } from 'test/utils';
+import { AutoMocked, automock } from 'test/utils';
 
 const getPixelColor = async (buffer: Buffer, x: number, y: number) => {
   const metadata = await sharp(buffer).metadata();
@@ -63,10 +63,12 @@ const buildTestQuadImage = async () => {
 
 describe(MediaRepository.name, () => {
   let sut: MediaRepository;
+  let loggerMock: AutoMocked<LoggingRepository>;
 
   beforeEach(() => {
     // eslint-disable-next-line no-sparse-arrays
-    sut = new MediaRepository(automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false }));
+    loggerMock = automock(LoggingRepository, { args: [, { getEnv: () => ({}) }], strict: false });
+    sut = new MediaRepository(loggerMock);
   });
 
   describe('applyEdits (single actions)', () => {
@@ -662,6 +664,53 @@ describe(MediaRepository.name, () => {
         expect(result.visible).toEqual([ocrInsideCrop]);
         expect(result.hidden).toEqual([ocrOutsideCrop]);
       });
+    });
+  });
+
+  describe('decodeImage', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it.each([
+      {
+        input: '/path/to/invalid/image.jpg',
+        message: 'Failed to decode image from file: /path/to/invalid/image.jpg',
+      },
+      {
+        input: Buffer.from('invalid image data'),
+        message: 'Failed to decode image from Buffer input',
+      },
+    ])('should log $message and rethrow the original decode error unchanged', async ({ input, message }) => {
+      const error = new Error('Input file contains unsupported image format');
+      vi.spyOn(sharp.prototype, 'toBuffer').mockRejectedValue(error);
+
+      await expect(
+        sut.decodeImage(input, {
+          colorspace: Colorspace.Srgb,
+          processInvalidImages: false,
+        }),
+      ).rejects.toBe(error);
+
+      expect(error.message).toBe('Input file contains unsupported image format');
+      expect(loggerMock.error).toHaveBeenCalledExactlyOnceWith(message);
+    });
+
+    it('should log the file path when Sharp fails while preparing edits', async () => {
+      const input = '/path/to/invalid/image.jpg';
+      const error = new Error('Input file contains unsupported image format');
+      vi.spyOn(sharp.prototype, 'metadata').mockRejectedValue(error);
+
+      await expect(
+        sut.decodeImage(input, {
+          colorspace: Colorspace.Srgb,
+          processInvalidImages: false,
+          edits: [{ action: AssetEditAction.Rotate, parameters: { angle: 90 } }],
+        }),
+      ).rejects.toBe(error);
+
+      expect(error.message).toBe('Input file contains unsupported image format');
+      expect(loggerMock.error).toHaveBeenCalledExactlyOnceWith(`Failed to decode image from file: ${input}`);
     });
   });
 });

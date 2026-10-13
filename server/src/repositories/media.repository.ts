@@ -141,8 +141,17 @@ export class MediaRepository {
   }
 
   async decodeImage(input: string | Buffer, options: DecodeToBufferOptions) {
-    const pipeline = await this.getImageDecodingPipeline(input, options);
-    return pipeline.raw().toBuffer({ resolveWithObject: true });
+    try {
+      const pipeline = await this.getImageDecodingPipeline(input, options);
+      return await pipeline.raw().toBuffer({ resolveWithObject: true });
+    } catch (error) {
+      if (typeof input === 'string') {
+        this.logger.error(`Failed to decode image from file: ${input}`);
+      } else {
+        this.logger.error('Failed to decode image from Buffer input');
+      }
+      throw error;
+    }
   }
 
   private async applyEdits(pipeline: sharp.Sharp, edits: AssetEditActionItem[]): Promise<sharp.Sharp> {
