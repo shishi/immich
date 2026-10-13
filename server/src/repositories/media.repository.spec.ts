@@ -7,7 +7,7 @@ import { LoggingRepository } from 'src/repositories/logging.repository';
 import { BoundingBox } from 'src/repositories/machine-learning.repository';
 import { MediaRepository } from 'src/repositories/media.repository';
 import { checkFaceVisibility, checkOcrVisibility } from 'src/utils/editor';
-import { automock } from 'test/utils';
+import { AutoMocked, automock } from 'test/utils';
 
 const getPixelColor = async (buffer: Buffer, x: number, y: number) => {
   const metadata = await sharp(buffer).metadata();
@@ -63,7 +63,7 @@ const buildTestQuadImage = async () => {
 
 describe(MediaRepository.name, () => {
   let sut: MediaRepository;
-  let loggerMock: any;
+  let loggerMock: AutoMocked<LoggingRepository>;
 
   beforeEach(() => {
     // eslint-disable-next-line no-sparse-arrays
@@ -668,65 +668,49 @@ describe(MediaRepository.name, () => {
   });
 
   describe('decodeImage', () => {
-    it('should log error with file path when decoding string path fails', async () => {
-      const testPath = '/path/to/invalid/image.jpg';
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it.each([
+      {
+        input: '/path/to/invalid/image.jpg',
+        message: 'Failed to decode image from file: /path/to/invalid/image.jpg',
+      },
+      {
+        input: Buffer.from('invalid image data'),
+        message: 'Failed to decode image from Buffer input',
+      },
+    ])('should log $message and rethrow the original decode error unchanged', async ({ input, message }) => {
+      const error = new Error('Input file contains unsupported image format');
+      vi.spyOn(sharp.prototype, 'toBuffer').mockRejectedValue(error);
 
       await expect(
-        sut.decodeImage(testPath, {
+        sut.decodeImage(input, {
           colorspace: Colorspace.Srgb,
           processInvalidImages: false,
         }),
-      ).rejects.toThrow();
+      ).rejects.toBe(error);
 
-      expect(loggerMock.error).toHaveBeenCalledWith(`Failed to decode image from file: ${testPath}`);
+      expect(error.message).toBe('Input file contains unsupported image format');
+      expect(loggerMock.error).toHaveBeenCalledExactlyOnceWith(message);
     });
 
-    it('should log error without file path when decoding Buffer fails', async () => {
-      const testBuffer = Buffer.from('invalid image data');
+    it('should log the file path when Sharp fails while preparing edits', async () => {
+      const input = '/path/to/invalid/image.jpg';
+      const error = new Error('Input file contains unsupported image format');
+      vi.spyOn(sharp.prototype, 'metadata').mockRejectedValue(error);
 
       await expect(
-        sut.decodeImage(testBuffer, {
+        sut.decodeImage(input, {
           colorspace: Colorspace.Srgb,
           processInvalidImages: false,
+          edits: [{ action: AssetEditAction.Rotate, parameters: { angle: 90 } }],
         }),
-      ).rejects.toThrow();
+      ).rejects.toBe(error);
 
-      expect(loggerMock.error).toHaveBeenCalledWith('Failed to decode image from Buffer input');
-    });
-
-    it('should append file path to error message when decoding string path fails', async () => {
-      const testPath = '/path/to/invalid/image.jpg';
-      let caughtError: Error | undefined;
-
-      try {
-        await sut.decodeImage(testPath, {
-          colorspace: Colorspace.Srgb,
-          processInvalidImages: false,
-        });
-      } catch (error) {
-        caughtError = error as Error;
-      }
-
-      expect(caughtError).toBeDefined();
-      expect(caughtError?.message).toContain(testPath);
-      expect(loggerMock.error).toHaveBeenCalledWith(`Failed to decode image from file: ${testPath}`);
-    });
-
-    it('should not modify error message when decoding Buffer fails', async () => {
-      const testBuffer = Buffer.from('invalid image data');
-      let caughtError: Error | undefined;
-
-      try {
-        await sut.decodeImage(testBuffer, {
-          colorspace: Colorspace.Srgb,
-          processInvalidImages: false,
-        });
-      } catch (error) {
-        caughtError = error as Error;
-      }
-
-      expect(caughtError).toBeDefined();
-      expect(caughtError?.message).not.toContain('Buffer');
+      expect(error.message).toBe('Input file contains unsupported image format');
+      expect(loggerMock.error).toHaveBeenCalledExactlyOnceWith(`Failed to decode image from file: ${input}`);
     });
   });
 });
